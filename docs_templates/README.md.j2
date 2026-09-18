@@ -89,10 +89,8 @@ Read these before the results. Full list with severity ratings: [FINDINGS.md](FI
 {% set D = r.data %}
 IEEE-CIS Fraud Detection (Vesta): {{ D.n_rows | int }} labelled card-not-present
 transactions, {{ D.fraud_rate | pct(2) }} fraud, spanning {{ D.dt_span_days | num(1) }} days of relative time;
-{{ D.identity_match_rate | pct(1) }} carry device and identity information. Files were
-verified against the official competition file sizes and row count before use
-(provenance in [FINDINGS.md](FINDINGS.md); full profile in
-[DATA_DICTIONARY.md](DATA_DICTIONARY.md)).
+{{ D.identity_match_rate | pct(1) }} carry device and identity information. Full profile in
+[DATA_DICTIONARY.md](DATA_DICTIONARY.md).
 
 The split is strictly by time, never random:
 

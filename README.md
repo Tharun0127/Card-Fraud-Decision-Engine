@@ -72,10 +72,8 @@ Read these before the results. Full list with severity ratings: [FINDINGS.md](FI
 
 IEEE-CIS Fraud Detection (Vesta): 590,540 labelled card-not-present
 transactions, 3.50% fraud, spanning 182.0 days of relative time;
-24.4% carry device and identity information. Files were
-verified against the official competition file sizes and row count before use
-(provenance in [FINDINGS.md](FINDINGS.md); full profile in
-[DATA_DICTIONARY.md](DATA_DICTIONARY.md)).
+24.4% carry device and identity information. Full profile in
+[DATA_DICTIONARY.md](DATA_DICTIONARY.md).
 
 The split is strictly by time, never random:
 
