@@ -1,0 +1,16 @@
+# Environments
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Raw and derived data are never committed; the pipeline downloads and rebuilds.
+data/
+artifacts/cache/
+
+# Notebook checkpoints
+notebooks/.ipynb_checkpoints/
+
+# Credentials
+kaggle.json
+.env
