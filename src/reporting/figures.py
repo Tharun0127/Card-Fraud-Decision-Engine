@@ -37,8 +37,10 @@ def profit_curve(val_sweep: pd.DataFrame, test_sweep: pd.DataFrame, marks: dict,
                 linestyle="--" if color == INK2 else "-", linewidth=1.5 if color == INK2 else 2)
     for name, (x, y, color) in marks.items():
         ax.plot([x * 100], [y], "o", ms=8, color=color, markeredgecolor="white", markeredgewidth=2, zorder=5)
-        ax.annotate(name, (x * 100, y), textcoords="offset points", xytext=(8, -14 if "Youden" in name else 6),
-                    color=INK, fontsize=9)
+        youden = "Youden" in name
+        ax.annotate(name, (x * 100, y), textcoords="offset points", xytext=(12, 10) if youden else (-12, 12),
+                    ha="left" if youden else "right", color=INK, fontsize=9,
+                    bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="none", alpha=0.85))
     ax.axhline(0, color=INK2, linewidth=0.8)
     ax.set_xscale("log")
     ax.set_xlabel("Share of transactions declined (%, log scale)")
@@ -110,7 +112,7 @@ def swap_figure(sets: dict[str, pd.DataFrame], path) -> None:
     axes[0].set_xlabel("TransactionAmt ($, log scale)")
     axes[0].set_ylabel("Density")
     axes[0].set_title("Amount distribution")
-    axes[0].legend(fontsize=8)
+    axes[0].legend(fontsize=8, loc="upper center", bbox_to_anchor=(0.5, -0.2), ncol=1)
     prods = sorted(set().union(*[set(d["ProductCD"].astype(str)) for d in sets.values() if len(d)]))
     x = np.arange(len(prods))
     live = [(n, d) for n, d in sets.items() if len(d)]
@@ -119,10 +121,11 @@ def swap_figure(sets: dict[str, pd.DataFrame], path) -> None:
         share = d["ProductCD"].astype(str).value_counts(normalize=True).reindex(prods).fillna(0)
         axes[1].bar(x + i * w - 0.4 + w / 2, share.to_numpy() * 100, width=w * 0.92, color=c, label=name)
     axes[1].set_xticks(x, prods)
+    axes[1].legend(fontsize=8, loc="upper left")
     axes[1].set_ylabel("Share of set (%)")
     axes[1].set_title("Product code mix")
     fig.suptitle("Swap set: transactions the Youden-J and profit-optimal cutoffs decide differently (test)",
-                 fontweight="bold")
+                 fontweight="bold", y=1.04)
     _save(fig, path)
 
 
