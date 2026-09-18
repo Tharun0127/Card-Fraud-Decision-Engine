@@ -14,3 +14,4 @@ notebooks/.ipynb_checkpoints/
 # Credentials
 kaggle.json
 .env
+outputs/pytest_report.xml
