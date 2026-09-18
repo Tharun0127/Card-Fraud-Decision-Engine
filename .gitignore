@@ -5,8 +5,8 @@ __pycache__/
 .pytest_cache/
 
 # Raw and derived data are never committed; the pipeline downloads and rebuilds.
-data/
-artifacts/cache/
+/data/
+/artifacts/cache/
 
 # Notebook checkpoints
 notebooks/.ipynb_checkpoints/
