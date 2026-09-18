@@ -54,7 +54,7 @@ MIN_CATEGORY_COUNT = 20
 OTHER = "__other__"
 
 
-def select_v_columns(df_train: pd.DataFrame, y_train: pd.Series, corr_threshold: float,
+def select_v_columns(df: pd.DataFrame, train_pos: np.ndarray, y_train: np.ndarray, corr_threshold: float,
                      max_keep: int, sample_rows: int, seed: int) -> tuple[list[str], dict[str, str]]:
     """Prune the V block using training rows only.
 
@@ -64,12 +64,12 @@ def select_v_columns(df_train: pd.DataFrame, y_train: pd.Series, corr_threshold:
        |Pearson correlation| with every already-kept column is <= threshold.
     3. Rank survivors by univariate |AUC - 0.5| and keep the top ``max_keep``.
     """
-    v_cols = sorted([c for c in df_train.columns if re.fullmatch(r"V\d+", c)], key=lambda c: int(c[1:]))
+    v_cols = sorted([c for c in df.columns if re.fullmatch(r"V\d+", c)], key=lambda c: int(c[1:]))
     reasons: dict[str, str] = {}
     rng = np.random.default_rng(seed)
-    take = rng.choice(len(df_train), size=min(sample_rows, len(df_train)), replace=False)
+    take = rng.choice(len(train_pos), size=min(sample_rows, len(train_pos)), replace=False)
     take.sort()
-    sample = df_train.iloc[take][v_cols].astype("float32")
+    sample = df.iloc[train_pos[take]][v_cols].astype("float32")  # sample rows only: the full V block is ~1 GB
     ys = np.asarray(y_train)[take]
     miss = sample.isna().mean()
     candidates = []
@@ -126,7 +126,7 @@ def build_features(df: pd.DataFrame, cfg: dict) -> tuple[pd.DataFrame, dict]:
     seed = cfg["seed"]
     if not df["TransactionDT"].is_monotonic_increasing:
         raise ValueError("input must be sorted by TransactionDT")
-    df = df.copy()
+    df = df.copy(deep=False)  # new columns only; pandas copy-on-write leaves the caller's frame untouched
     add_keys(df)
     is_train = (df["split"] == "train").to_numpy()
     y = df["isFraud"]
@@ -134,7 +134,9 @@ def build_features(df: pd.DataFrame, cfg: dict) -> tuple[pd.DataFrame, dict]:
     families: dict[str, str] = {}
 
     # raw columns, with the training-missingness filter
-    tr_miss = df.loc[is_train].isna().mean()
+    train_pos = np.flatnonzero(is_train)
+    tr_miss = pd.Series({c: float(df[c].iloc[train_pos].isna().mean()) for c in df.columns
+                         if not re.fullmatch(r"V\d+", c)})
     raw_num = [c for c in RAW_NUMERIC if tr_miss[c] <= MISSING_DROP]
     raw_cat = [c for c in RAW_CATEGORICAL if tr_miss[c] <= MISSING_DROP]
     for c in set(RAW_NUMERIC + RAW_CATEGORICAL) - set(raw_num + raw_cat):
@@ -161,7 +163,7 @@ def build_features(df: pd.DataFrame, cfg: dict) -> tuple[pd.DataFrame, dict]:
     families["amt_cents"] = families["hour_proxy"] = "raw"
 
     # V block
-    v_keep, v_reasons = select_v_columns(df.loc[is_train], y[is_train], fcfg["v_corr_threshold"],
+    v_keep, v_reasons = select_v_columns(df, train_pos, y.to_numpy()[is_train], fcfg["v_corr_threshold"],
                                          fcfg["v_max_keep"], fcfg["v_sample_rows"], seed)
     dropped.update(v_reasons)
     for c in v_keep:
