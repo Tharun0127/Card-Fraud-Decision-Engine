@@ -60,3 +60,13 @@ def test_check_split_detects_overlap():
     df["split"] = ["train"] * 6 + ["valid", "train", "test", "test"]
     with pytest.raises(AssertionError):
         check_split(df)
+
+
+def test_download_integrity_check_rejects_a_wrong_size(tmp_path):
+    from src.data.download import verify_files
+    (tmp_path / "a.csv").write_bytes(b"12345")
+    assert verify_files(tmp_path, {"a.csv": 5})["a.csv"]["bytes"] == 5
+    with pytest.raises(RuntimeError):
+        verify_files(tmp_path, {"a.csv": 6})
+    with pytest.raises(RuntimeError):
+        verify_files(tmp_path, {"missing.csv": 1})

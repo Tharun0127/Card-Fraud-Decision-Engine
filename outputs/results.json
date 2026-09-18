@@ -1,0 +1,136 @@
+{
+ "data": {
+  "by_period": [
+   {
+    "dt_max": 2678390.0,
+    "dt_min": 86400.0,
+    "fraud_rate": 0.025316549922211717,
+    "n": 134339.0,
+    "period": 0
+   },
+   {
+    "dt_max": 5270398.0,
+    "dt_min": 2678405.0,
+    "fraud_rate": 0.04001163323974541,
+    "n": 89399.0,
+    "period": 1
+   },
+   {
+    "dt_max": 7862394.0,
+    "dt_min": 5270451.0,
+    "fraud_rate": 0.04039527492434022,
+    "n": 92189.0,
+    "period": 2
+   },
+   {
+    "dt_max": 10454392.0,
+    "dt_min": 7862402.0,
+    "fraud_rate": 0.039527455255285705,
+    "n": 98615.0,
+    "period": 3
+   },
+   {
+    "dt_max": 13046391.0,
+    "dt_min": 10454414.0,
+    "fraud_rate": 0.03410273898840507,
+    "n": 83571.0,
+    "period": 4
+   },
+   {
+    "dt_max": 15638385.0,
+    "dt_min": 13046456.0,
+    "fraud_rate": 0.03418685439528838,
+    "n": 86934.0,
+    "period": 5
+   },
+   {
+    "dt_max": 15811131.0,
+    "dt_min": 15638417.0,
+    "fraud_rate": 0.04387402148188604,
+    "n": 5493.0,
+    "period": 6
+   }
+  ],
+  "by_split": {
+   "test": {
+    "amt_fraud": 469608.521,
+    "amt_total": 12148754.186,
+    "days": 30.778368055555557,
+    "dt_max": 15811131.0,
+    "dt_min": 13151880.0,
+    "fraud_rate": 0.03480430340592226,
+    "n": 88581.0,
+    "n_fraud": 3083.0
+   },
+   "train": {
+    "amt_fraud": 2117328.751,
+    "amt_total": 55642700.855,
+    "days": 119.81013888888889,
+    "dt_max": 10437996.0,
+    "dt_min": 86400.0,
+    "fraud_rate": 0.03516878014795175,
+    "n": 413378.0,
+    "n_fraud": 14538.0
+   },
+   "valid": {
+    "amt_fraud": 496907.588,
+    "amt_total": 11947493.694,
+    "days": 31.410150462962964,
+    "dt_max": 13151840.0,
+    "dt_min": 10438003.0,
+    "fraud_rate": 0.03434145019812375,
+    "n": 88581.0,
+    "n_fraud": 3042.0
+   }
+  },
+  "cardinality": {
+   "DeviceInfo": 1787,
+   "DeviceType": 3,
+   "P_emaildomain": 60,
+   "ProductCD": 5,
+   "R_emaildomain": 61,
+   "addr1": 332,
+   "addr2": 74,
+   "card1": 13553,
+   "card2": 500,
+   "card3": 114,
+   "card4": 5,
+   "card5": 119,
+   "card6": 5,
+   "card_key": 14893,
+   "id_30": 76,
+   "id_31": 131,
+   "id_33": 261,
+   "uid": 222493
+  },
+  "dt_span_days": 181.99920138888888,
+  "fraud_rate": 0.03499000914417313,
+  "identity_match_rate": 0.2442391709283029,
+  "n_columns": 437,
+  "n_fraud": 20663,
+  "n_rows": 590540,
+  "provenance": {
+   "expected_rows": 590540,
+   "files": {
+    "train_identity.csv": {
+     "bytes": 26529680,
+     "expected_bytes": 26529680,
+     "sha256": "b63c725d8377be90a995268d97f347c17d456b95db45807adcf9f59cd603c37c"
+    },
+    "train_transaction.csv": {
+     "bytes": 683351067,
+     "expected_bytes": 683351067,
+     "sha256": "3a5c83ab6b3cc13dcabe5ffa9f522307fd5f7f7b6e6f6a60c32284ca6283d642"
+    }
+   },
+   "mirror_dataset": "lnasiri007/ieeecis-fraud-detection",
+   "source": "mirror"
+  },
+  "split_boundaries_ok": true,
+  "split_fractions": {
+   "test": 0.15,
+   "train": 0.7,
+   "valid": 0.15
+  }
+ }
+}

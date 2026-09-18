@@ -12,7 +12,17 @@ paths:
 
 kaggle:
   competition: ieee-fraud-detection
+  # source: competition = official competition API (requires accepting the rules);
+  #         mirror      = public Kaggle dataset re-upload (see FINDINGS.md deviation).
+  source: mirror
+  mirror_dataset: lnasiri007/ieeecis-fraud-detection
   files: [train_transaction.csv, train_identity.csv]
+  # Byte sizes published on the official competition file listing. Any download,
+  # from either source, must match exactly or the pipeline stops.
+  expected_bytes:
+    train_transaction.csv: 683351067
+    train_identity.csv: 26529680
+  expected_rows: 590540
 
 split:
   train_frac: 0.70

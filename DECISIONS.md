@@ -170,3 +170,14 @@ aggregates and model parameters, not row-level data.
 **D7.3 Makefile on Windows.** The Makefile uses the venv interpreter path for the
 host OS. On Windows without `make`, run the same `python -m src.run_all` commands
 shown in each target.
+
+## Deviation from pre-registration
+
+**D-1 Data obtained from a public mirror of the competition files.** The Kaggle
+competition download was refused (rules not accepted on the account in use).
+The same two files were taken from the public Kaggle dataset
+`lnasiri007/ieeecis-fraud-detection`. Before use, each file is checked against
+the byte size on the official competition listing and the merged row count is
+checked against the published 590,540; the pipeline stops on any mismatch, and
+SHA-256 hashes are recorded. Switching back is one line
+(`kaggle.source: competition`). Logged in FINDINGS.md as a deviation.

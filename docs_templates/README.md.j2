@@ -241,9 +241,14 @@ period. Nothing is tuned on test.
 
 ## Reproduce
 
-Requires Python 3.12, a Kaggle account, and acceptance of the competition rules
-at <https://www.kaggle.com/c/ieee-fraud-detection/rules> (without it the Kaggle
-API refuses the download). Place the API token at `~/.kaggle/kaggle.json`.
+Requires Python 3.12 and a Kaggle API token (`~/.kaggle/kaggle.json` or
+`~/.kaggle/access_token`). The results in this README were produced from the
+public Kaggle re-upload `{{ r.data.provenance.mirror_dataset }}` of the competition files; each
+file was verified byte-for-byte in size against the official listing and the
+merged row count against the published total (see the deviation in
+[FINDINGS.md](FINDINGS.md)). To use the official source instead, accept the
+competition rules at <https://www.kaggle.com/c/ieee-fraud-detection/rules> and set
+`kaggle.source: competition` in `config/pipeline.yaml`.
 
 ```bash
 make setup     # virtualenv + pinned requirements

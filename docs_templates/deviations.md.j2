@@ -1,2 +1,21 @@
-- None recorded. The split rule, metrics, baselines, cost ranges, success rule and
-  seed were used as pre-registered.
+{% set PV = r.data.provenance %}
+- **D-1 Data source (severity: Low for results, Medium for licensing).**
+  PRE_REGISTRATION.md specifies downloading the competition files through the
+  Kaggle competition API. That download was refused because the competition
+  rules had not been accepted on the account used. The labelled files were instead
+  taken from the public Kaggle dataset `{{ PV.mirror_dataset }}`, a third-party
+  re-upload of the same competition files.
+  *Integrity:* each file matched the byte size on the official competition
+  listing exactly (`train_transaction.csv`: {{ PV.files["train_transaction.csv"].bytes | int }} bytes;
+  `train_identity.csv`: {{ PV.files["train_identity.csv"].bytes | int }} bytes), and the
+  merged table has {{ r.data.n_rows | int }} rows, the expected count. SHA-256 hashes are
+  recorded in `outputs/results.json` under `data.provenance`.
+  *Impact:* none expected on any result, since the files match the official release in byte size
+  and row count; a content-level comparison was not possible without the official
+  download. The mirror is not an official
+  distribution; the competition's data-use terms still apply to the data.
+  *Recommendation:* anyone reproducing this should accept the competition rules and
+  set `kaggle.source: competition` in `config/pipeline.yaml`; the same size checks
+  then apply to the official download.
+- No other deviations. The split rule, metrics, baselines, cost ranges, success rule
+  and seed were used as pre-registered.

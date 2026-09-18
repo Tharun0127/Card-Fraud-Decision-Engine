@@ -83,6 +83,7 @@ def stage_data(cfg: dict, ccfg: dict) -> None:
     from src.features.keys import add_keys
 
     p = paths(cfg).ensure()
+    provenance = None
     if cfg.get("synthetic"):
         from src.data.synthetic import make_raw
         tx, ids = make_raw(seed=cfg["seed"])
@@ -91,10 +92,13 @@ def stage_data(cfg: dict, ccfg: dict) -> None:
         (p.interim / "merged.parquet").unlink(missing_ok=True)
     else:
         from src.data.download import download
-        download()
+        provenance = download()
     log("data: merging transaction and identity tables")
     df = build_merged(cfg)
     raw_cols = list(df.columns)
+    expected = cfg["kaggle"].get("expected_rows")
+    if not cfg.get("synthetic") and expected and len(df) != expected:
+        raise SystemExit(f"merged data has {len(df):,} rows, expected {expected:,}; refusing to continue")
     df["split"] = time_split(df, cfg["split"]["train_frac"], cfg["split"]["valid_frac"])
     df.to_parquet(p.interim / "base.parquet", index=False)
     log("data: profiling")
@@ -109,6 +113,10 @@ def stage_data(cfg: dict, ccfg: dict) -> None:
     res = load_results(p)
     res["data"] = {k: v for k, v in prof.items() if k not in ("missingness",)}
     res["data"]["split_boundaries_ok"] = True
+    if provenance is not None:
+        res["data"]["provenance"] = {"source": cfg["kaggle"]["source"],
+                                     "mirror_dataset": cfg["kaggle"].get("mirror_dataset"),
+                                     "files": provenance, "expected_rows": cfg["kaggle"]["expected_rows"]}
     res["data"]["split_fractions"] = {"train": cfg["split"]["train_frac"], "valid": cfg["split"]["valid_frac"],
                                       "test": round(1 - cfg["split"]["train_frac"] - cfg["split"]["valid_frac"], 10)}
     save_results(p, res)
