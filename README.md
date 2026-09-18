@@ -63,13 +63,41 @@ Read these before the results. Full list with severity ratings: [FINDINGS.md](FI
   34.5 reviews per day on validation; on test it averaged
   38.2 and exceeded capacity on
   20 of 31 relative days. Overflow handling is not modelled.
-- **Data from a public mirror.** The official competition download was refused, so
-  the files came from a public Kaggle re-upload, verified against the official byte
-  sizes and row count (deviation logged in FINDINGS.md).
 - **One test period, one data source.** The test split covers
   30.8 relative days and 88,581 transactions.
   Intervals below are bootstrap intervals over transactions within that period;
   they do not cover period-to-period variation.
+
+## Data
+
+IEEE-CIS Fraud Detection (Vesta): 590,540 labelled card-not-present
+transactions, 3.50% fraud, spanning 182.0 days of relative time;
+24.4% carry device and identity information. Files were
+verified against the official competition file sizes and row count before use
+(provenance in [FINDINGS.md](FINDINGS.md); full profile in
+[DATA_DICTIONARY.md](DATA_DICTIONARY.md)).
+
+The split is strictly by time, never random:
+
+| Split | Transactions | Fraud rate | Relative days | Used for |
+|---|---:|---:|---:|---|
+| Train | 413,378 | 3.52% | 119.8 | features, tuning, model fit |
+| Validation | 88,581 | 3.43% | 31.4 | choosing every threshold |
+| Test | 88,581 | 3.48% | 30.8 | reporting only |
+
+## Features
+
+148 features in five families, every fitted step using training rows only:
+
+| Family | Count | What it captures |
+|---|---:|---|
+| Velocity | 20 | Per card and per account: transaction counts and amount sums over the prior hour, day and week; time since last transaction; tenure. Strictly backward-looking. |
+| Entity risk | 4 | Out-of-fold, smoothed historical fraud rate of product code, billing region and email domains. |
+| Linkage | 7 | Distinct cards per device, OS, browser and device fingerprint; distinct emails and addresses per card. Signals of organised fraud. |
+| Raw | 82 | Amount, card attributes, counts, time deltas, match flags, identity fields (native categorical handling, no one-hot). |
+| Vesta | 35 | Pruned from the provider's engineered V-columns by NaN-group correlation filtering. |
+
+![Feature importance](outputs/figures/feature_importance.png)
 
 ## Headline results
 
@@ -154,6 +182,28 @@ When both cutoffs threshold the same score, their decline sets are nested, so th
 swap set runs in one direction only. Its composition (amounts, card tenure,
 product mix) is in [REPORT.md](REPORT.md#swap-set) and `outputs/tables/swap_set.csv`.
 
+### Three-way policy under review capacity
+
+![Three-way policy search](outputs/figures/three_way_policy.png)
+
+Two thresholds split traffic into approve, review and decline. The pair was chosen
+on validation as the most profitable one whose review load stays within
+34.5 cases per day. Compared with the best single cutoff it adds
+$76.96 (95% CI $54.27 to $104.84) per 1,000 transactions and cuts the
+good-customer disruption rate from 5.87% to
+4.88%: borderline cases go to an analyst instead of
+being declined.
+
+### Who the Youden-J cutoff wrongly declines
+
+![Swap set](outputs/figures/swap_set.png)
+
+The 6,520 test transactions that the Youden-J cutoff declines but the
+profit-optimal cutoff approves have a fraud rate of 4.98%, against
+29.66% among transactions both cutoffs decline. Declining them stops little
+fraud and turns away thousands of good customers; they are concentrated in product
+code W. Full breakdown: [REPORT.md](REPORT.md#swap-set).
+
 ### Model metrics
 
 Test split, full model versus no-velocity model:
@@ -194,6 +244,19 @@ assumptions. How often each ordering of policies survives:
 
 ![Optimal threshold across margin and churn assumptions](outputs/figures/sensitivity_threshold_margin_churn.png)
 
+## Monitoring
+
+![Feature drift](outputs/figures/psi_top_features.png)
+
+PSI between the training and test periods flags 17 features above
+0.25 and 6 between 0.10 and 0.25, mostly cumulative counters that grow
+with time and target-encoded features (explained in [FINDINGS.md](FINDINGS.md)). The model's
+score distribution itself is stable: PSI between validation and test is
+0.009, and no weekly window exceeds 0.023.
+Triggers, owners and retraining rules: [MONITORING_PLAN.md](MONITORING_PLAN.md).
+
+![Score stability](outputs/figures/score_stability.png)
+
 ## How the work is verified
 
 | Check | What it proves | Where |
@@ -231,28 +294,17 @@ flowchart LR
 Thresholds are chosen on the validation period and applied once to the test
 period. Nothing is tuned on test.
 
-## Reproduce
-
-Requires Python 3.12 and a Kaggle API token (`~/.kaggle/kaggle.json` or
-`~/.kaggle/access_token`). The results in this README were produced from the
-public Kaggle re-upload `lnasiri007/ieeecis-fraud-detection` of the competition files; each
-file was verified byte-for-byte in size against the official listing and the
-merged row count against the published total (see the deviation in
-[FINDINGS.md](FINDINGS.md)). To use the official source instead, accept the
-competition rules at <https://www.kaggle.com/c/ieee-fraud-detection/rules> and set
-`kaggle.source: competition` in `config/pipeline.yaml`.
+## Run it
 
 ```bash
-make setup     # virtualenv + pinned requirements
-make all       # download, features, train, decide, monitor, report, tests
+pip install -r requirements.txt
+python -m src.run_all      # data -> features -> model -> decision layer -> monitoring -> report
+python -m pytest -q
 ```
 
-`make all` runs `python -m src.run_all` and then the test suite. Individual
-stages: `make data`, `make features`, `make train`, `make decide`, `make report`,
-`make test`. `make smoke` runs the whole pipeline on a small synthetic dataset
-with the same schema, without Kaggle access. The seed is fixed in
-`config/pipeline.yaml`; LightGBM runs with `deterministic=true` and a fixed thread
-count. Raw and derived data are gitignored and rebuilt by the pipeline.
+Stages can be run individually (`python -m src.run_all --stage decide`). The seed
+is fixed in `config/pipeline.yaml` and LightGBM runs in deterministic mode, so a
+rerun reproduces every number in this README.
 
 ## Layout
 
