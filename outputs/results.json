@@ -132,5 +132,22 @@
    "train": 0.7,
    "valid": 0.15
   }
+ },
+ "features": {
+  "by_family": {
+   "entity_risk": 4,
+   "linkage": 7,
+   "raw": 82,
+   "velocity": 20,
+   "vesta": 35
+  },
+  "max_features": 150,
+  "n_categorical": 29,
+  "n_dropped": 323,
+  "n_features": 148,
+  "n_v_kept": 35,
+  "te_folds": 5,
+  "te_smoothing": 50,
+  "v_corr_threshold": 0.9
  }
 }
