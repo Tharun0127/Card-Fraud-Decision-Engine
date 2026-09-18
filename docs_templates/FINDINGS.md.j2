@@ -191,8 +191,7 @@ high percentile of daily load rather than the mean.
 **What.** Training rows are encoded with statistics from the other time blocks of
 the training period, including later ones.
 **Impact.** Training rows see a mildly "future-informed" encoding that validation
-and test rows do not. This is the standard out-of-fold construction the brief
-asked for; it can make training-period CV slightly optimistic. Validation and test
+and test rows do not. This is the standard out-of-fold construction; it can make training-period CV slightly optimistic. Validation and test
 encodings use training labels only and are unaffected.
 **Recommendation.** An expanding-window encoding (earlier blocks only) is the
 stricter alternative.

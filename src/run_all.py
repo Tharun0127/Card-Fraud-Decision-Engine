@@ -14,6 +14,7 @@ import argparse
 import copy
 import json
 import platform
+import sys
 import time
 
 import lightgbm as lgb
@@ -524,6 +525,27 @@ def stage_monitor(cfg: dict, ccfg: dict) -> None:
     log(f"monitor: {len(sig)} significant, {len(mod)} moderate PSI breaches")
 
 
+def run_test_suite(out_xml) -> dict:
+    """Run pytest and return pass / fail / skip counts for the verification section.
+
+    The committed-documents check is deselected here because the documents are
+    re-rendered after this runs; the report stage performs that check itself.
+    """
+    import subprocess
+    import xml.etree.ElementTree as ET
+
+    cmd = [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", f"--junitxml={out_xml}",
+           "--deselect", "tests/test_documents.py::test_committed_documents_only_contain_numbers_from_results"]
+    proc = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
+    root = ET.parse(out_xml).getroot()
+    suite = root if root.tag == "testsuite" else root.find("testsuite")
+    total, fail, err, skip = (int(suite.get(k, 0)) for k in ("tests", "failures", "errors", "skipped"))
+    files = sorted({(c.get("classname") or "").split(".")[1] for c in suite.iter("testcase")
+                    if "." in (c.get("classname") or "")})
+    return {"tests_total": total, "tests_passed": total - fail - err - skip, "tests_failed": fail + err,
+            "tests_skipped": skip, "test_files": len(files), "pytest_exit_code": proc.returncode}
+
+
 def stage_report(cfg: dict, ccfg: dict) -> None:
     from src.reporting import render
     from src.reporting.check_numbers import check_documents
@@ -534,6 +556,9 @@ def stage_report(cfg: dict, ccfg: dict) -> None:
                    "python_minor": float(".".join(platform.python_version().split(".")[:2])),
                    "lightgbm_version": lgb.__version__, "n_threads": cfg["n_threads"],
                    "per_n_transactions": 1000}
+    log("report: running the test suite for the verification record")
+    res["verification"] = run_test_suite(p.outputs / "pytest_report.xml")
+    log(f"report: tests {res['verification']['tests_passed']} passed, {res['verification']['tests_failed']} failed")
     save_results(p, res)
     out_dir = p.outputs / "docs" if cfg.get("synthetic") else ROOT
     out_dir.mkdir(parents=True, exist_ok=True)

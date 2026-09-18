@@ -1,17 +1,13 @@
 # Decision log
 
-Choices made without asking, with the reasoning. Newest decisions are appended
+Design choices, with the reasoning behind each. Newest decisions are appended
 at the end of each section. Where a decision interacts with the
 pre-registration, that is stated.
 
 ## Phase 0: scope and pre-registration
 
-**D0.1 Use the directory the session was started in.** The setup note suggested
-creating `fraud-decision-engine/`; the repo lives in the existing working
-directory instead. Nothing depends on the directory name.
-
 **D0.2 Validation split selects every threshold; test is report-only.** The
-brief asks for the profit-optimal and Youden-J cutoffs. Choosing them on test
+project compares the profit-optimal and Youden-J cutoffs. Choosing them on test
 would report an in-sample optimum as if it were achievable. Thresholds are
 therefore picked on validation and evaluated on test. Test-optimal ("oracle")
 values are reported only as a reference for how much is lost to threshold
@@ -72,7 +68,7 @@ this device" counts cards seen strictly earlier plus the current card, since the
 current card is known at authorisation. Later rows never contribute.
 
 **D2.3 Target encoding.** Pseudo-count 50 toward the fold prior. Out-of-fold over
-5 contiguous time blocks of the training period, as the brief specifies; the
+5 contiguous time blocks of the training period (standard out-of-fold scheme); the
 stricter expanding-window alternative is noted in FINDINGS.md. Missing is its own
 category. Unseen categories get the training prior.
 
@@ -144,7 +140,7 @@ reports the realised daily distribution and the number of days over capacity.
 evaluated split, times 1,000.
 
 **D4.5 Swap set.** Compared between the profit-optimal and Youden-J single
-cutoffs, which answers the brief's question directly. Because both threshold one
+cutoffs, which isolates the effect of the cutoff choice. Because both threshold one
 score, one direction is empty by construction; that is stated, not hidden.
 
 ## Phase 5: sensitivity
