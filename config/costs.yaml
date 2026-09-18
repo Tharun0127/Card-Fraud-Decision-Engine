@@ -1,0 +1,23 @@
+# Cost model. All values are ASSUMPTIONS (see PRE_REGISTRATION.md §5), not
+# measurements. Currency: USD, same unit as TransactionAmt.
+margin_rate: 0.02            # false decline: lost margin as a share of the amount
+churn_penalty: 10.0          # false decline: flat lost future customer value
+review_cost: 5.0             # per case sent to manual review
+review_catch_rate: 0.85      # P(reviewed fraud is caught); caught fraud costs 0
+
+# Review capacity. max_reviews_per_day: auto derives it as
+# review_capacity_share * mean daily transaction count in the training period.
+max_reviews_per_day: auto
+review_capacity_share: 0.01
+
+threshold_grid:
+  n_quantiles: 2000          # quantile points of the validation score distribution
+  n_linear: 1001             # plus an even grid on [0, 1]
+  n_policy_grid: 400         # per-axis grid for the two-threshold search
+
+sensitivity:                 # pre-registered ranges (PRE_REGISTRATION.md §5)
+  margin_rate: [0.005, 0.01, 0.02, 0.035, 0.05]
+  churn_penalty: [0.0, 5.0, 10.0, 25.0, 50.0]
+  review_cost: [1.0, 2.5, 5.0, 10.0, 20.0]
+  review_catch_rate: [0.5, 0.65, 0.8, 0.85, 0.95, 0.98]
+  review_capacity_share: [0.005, 0.01, 0.02]
