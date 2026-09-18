@@ -57,6 +57,8 @@ def paired_bootstrap(stat: Callable[[np.ndarray], float], n: int, n_boot: int, s
         idx = rng.integers(0, n, size=n)
         vals[b] = stat(idx)
     vals = vals[np.isfinite(vals)]
+    if len(vals) == 0:  # statistic undefined on every resample (e.g. a policy that flags nothing)
+        return {"ci_low": float("nan"), "ci_high": float("nan"), "n_boot_valid": 0, "excludes_zero": False}
     a = (1 - level) / 2
     lo, hi = np.quantile(vals, [a, 1 - a])
     return {"ci_low": float(lo), "ci_high": float(hi), "n_boot_valid": int(len(vals)),

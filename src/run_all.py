@@ -327,8 +327,10 @@ def stage_decide(cfg: dict, ccfg: dict) -> None:
                  characterise(both_approve, frame, "both approve")]
     swap_df = pd.DataFrame(swap_rows)
     swap_df.to_csv(p.tables / "swap_set.csv", index=False)
-    swap_benefit = {"swap_set_net_benefit_profit": float(ben["profit_single"][sw["a_approves_b_declines"]].sum()),
-                    "swap_set_net_benefit_youden": float(ben["youden_single"][sw["a_approves_b_declines"]].sum())}
+    swap_mask = sw["a_approves_b_declines"] | sw["a_declines_b_approves"]
+    swap_benefit = {"swap_set_net_benefit_profit": float(ben["profit_single"][swap_mask].sum()),
+                    "swap_set_net_benefit_youden": float(ben["youden_single"][swap_mask].sum()),
+                    "profit_declines_fewer": bool(sw["a_approves_b_declines"].sum() >= sw["a_declines_b_approves"].sum())}
 
     # sensitivity (pre-registered grid)
     log("decide: sensitivity sweep")
@@ -384,8 +386,11 @@ def stage_decide(cfg: dict, ccfg: dict) -> None:
     t_min = float(np.quantile(va["score_full"].to_numpy(), 0.80))  # region declining <= 20% of traffic
     figures.three_way_heatmap(tw["matrix"], tw["thresholds"], (fs["t_review"], fs["t_decline"]), len(va),
                               t_min, p.figures / "three_way_policy.png")
-    sets = {"Swap set (profit approves, Youden declines)": frame[sw["a_approves_b_declines"]],
-            "Both decline": frame[both_decline]}
+    if sw["a_approves_b_declines"].sum() >= sw["a_declines_b_approves"].sum():
+        sets = {"Swap set (profit approves, Youden declines)": frame[sw["a_approves_b_declines"]]}
+    else:
+        sets = {"Swap set (profit declines, Youden approves)": frame[sw["a_declines_b_approves"]]}
+    sets["Both decline"] = frame[both_decline]
     figures.swap_figure(sets, p.figures / "swap_set.png")
     d0 = base_p
     sub = sens[(sens["review_cost"] == d0.review_cost) & (sens["review_catch_rate"] == d0.review_catch_rate)]
@@ -501,7 +506,7 @@ def stage_monitor(cfg: dict, ccfg: dict) -> None:
     sig = psi[psi["band"] == "significant"]
     mod = psi[psi["band"] == "moderate"]
     res["monitoring"] = {
-        "psi_warn": mc["psi_warn"], "psi_alert": mc["psi_alert"], "n_features": len(psi),
+        "psi_warn": mc["psi_warn"], "psi_alert": mc["psi_alert"], "n_features": len(psi), "plan": mc["plan"],
         "n_significant": int(len(sig)), "n_moderate": int(len(mod)),
         "n_stable": int((psi["band"] == "stable").sum()),
         "significant_features": sig[["feature", "psi", "family"]].to_dict("records"),
@@ -526,13 +531,14 @@ def stage_report(cfg: dict, ccfg: dict) -> None:
     p = paths(cfg)
     res = load_results(p)
     res["meta"] = {"seed": cfg["seed"], "python_version": platform.python_version(),
-                   "lightgbm_version": lgb.__version__, "n_threads": cfg["n_threads"]}
+                   "python_minor": float(".".join(platform.python_version().split(".")[:2])),
+                   "lightgbm_version": lgb.__version__, "n_threads": cfg["n_threads"],
+                   "per_n_transactions": 1000}
     save_results(p, res)
-    if cfg.get("synthetic"):
-        log("report: synthetic run, documents not rendered")
-        return
-    render.render_all(res)
-    problems = check_documents()
+    out_dir = p.outputs / "docs" if cfg.get("synthetic") else ROOT
+    out_dir.mkdir(parents=True, exist_ok=True)
+    render.render_all(res, out_dir)
+    problems = check_documents(out_dir, p.results)
     if problems:
         raise SystemExit("Numbers in documents not found in results.json:\n" + "\n".join(problems))
     log("report: documents rendered and number check passed")

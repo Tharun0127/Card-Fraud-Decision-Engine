@@ -58,3 +58,10 @@ monitoring:
   psi_warn: 0.10
   psi_alert: 0.25
   score_window_days: 7
+  plan:                          # production monitoring triggers (MONITORING_PLAN.md)
+    psi_features_alert_count: 5  # investigate if this many features cross psi_alert in one window
+    score_psi_retrain: 0.25      # retrain review if weekly score PSI vs the validation reference exceeds this
+    pr_auc_relative_drop: 0.15   # retrain if matured-label PR-AUC falls by this share vs the launch baseline
+    decline_rate_band: 0.5       # investigate if daily decline rate moves by this share vs the launch rate
+    capacity_breach_days: 3      # consecutive days over review capacity before thresholds are re-selected
+    label_maturity_days: 90      # wait before treating a window's labels as final

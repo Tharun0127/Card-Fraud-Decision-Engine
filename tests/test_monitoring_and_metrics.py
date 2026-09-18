@@ -65,3 +65,9 @@ def test_rules_baseline_needs_both_conditions():
     np.testing.assert_array_equal(rules_decline(amt, prior, thr), [True, False, False, False])
     with pytest.raises(ValueError):
         amount_threshold(np.array([]), 90)
+
+
+def test_bootstrap_of_an_undefined_statistic_reports_no_interval_instead_of_crashing():
+    from src.models.evaluate import paired_bootstrap
+    ci = paired_bootstrap(lambda idx: float("nan"), 100, 20, seed=0)
+    assert ci["n_boot_valid"] == 0 and not ci["excludes_zero"] and np.isnan(ci["ci_low"])

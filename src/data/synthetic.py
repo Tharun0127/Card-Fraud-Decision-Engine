@@ -48,10 +48,10 @@ def make_raw(n: int = 30_000, seed: int = 0, n_v: int = 40) -> tuple[pd.DataFram
     })
     for i in range(1, 15):
         tx[f"C{i}"] = rng.poisson(1 + 2 * y * (i % 3 == 0), n).astype(float)
-    card_start = rng.integers(0, 400, n_cards)
+    card_start = -rng.integers(0, 400, n_cards)  # account opened before the data window
     for i in range(1, 16):
         if i == 1:
-            tx["D1"] = np.maximum(dt // 86_400 - card_start[card_id], 0).astype(float)
+            tx["D1"] = (dt // 86_400 - card_start[card_id]).astype(float)
         else:
             tx[f"D{i}"] = np.where(rng.random(n) < 0.3 + 0.03 * i, np.nan, rng.integers(0, 600, n))
     for i in range(1, 10):

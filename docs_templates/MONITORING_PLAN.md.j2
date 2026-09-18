@@ -1,0 +1,69 @@
+{% set M = r.monitoring %}
+{% set PL = r.monitoring.plan %}
+{% set P = r.decision.policies_test.full %}
+# Monitoring plan
+
+Scope: the full LightGBM model and the capacity-constrained three-way policy
+(approve / review / decline) described in REPORT.md. Generated from
+`outputs/results.json`; trigger values live in `config/pipeline.yaml` under
+`monitoring.plan`.
+
+## Owners
+
+| Role | Owns |
+|---|---|
+| Fraud strategy lead | The decision policy: thresholds, cost parameters, capacity. Signs off any threshold change. |
+| Model owner (data science) | Model, features, retraining, this plan's analyses. |
+| Fraud operations manager | Review queue: staffing, daily volume, analyst outcomes (catch rate, analyst declines). |
+| Model risk / validation | Independent review of retraining and of any change to the cost model. |
+| ML engineering | Feature pipeline health, scoring latency, data contracts. |
+
+## What to watch
+
+| Signal | Frequency | Reference | Investigate when | Owner |
+|---|---|---|---|---|
+| Feature PSI, every model feature | Weekly | Training period | Any feature at or above {{ M.psi_alert | num(2) }}, or at least {{ PL.psi_features_alert_count | int }} features at or above {{ M.psi_warn | num(2) }} | Model owner |
+| Score distribution PSI | Weekly ({{ M.score_window_days | int }}-day windows) | Validation-period scores | Above {{ M.psi_warn | num(2) }}; retraining review above {{ PL.score_psi_retrain | num(2) }} | Model owner |
+| Decline rate and review rate | Daily | Launch rates ({{ P.profit_three_way.decline_rate | pct(2) }} declined, {{ P.profit_three_way.review_rate | pct(2) }} reviewed on test) | Moves by more than {{ PL.decline_rate_band | pct(0) }} of the launch rate | Fraud strategy |
+| Review queue load | Daily | Capacity {{ r.costs.max_reviews_per_day | num(1) }} per day | Over capacity {{ PL.capacity_breach_days | int }} days in a row | Fraud operations |
+| Analyst catch rate and analyst declines | Monthly | Assumed {{ r.costs.review_catch_rate | num(2) }} | Measured value outside the pre-registered range | Fraud operations |
+| PR-AUC, capture rate, disruption rate on matured labels | Monthly, lagged {{ PL.label_maturity_days | int }} days | Test-period values | PR-AUC falls by more than {{ PL.pr_auc_relative_drop | pct(0) }} relative to launch | Model owner |
+| Net benefit at current cost parameters | Monthly, lagged | Test-period value | Sign change, or policy ranking changes | Fraud strategy |
+| Input data contracts (nulls, new categories, schema) | Every batch | Training vocabulary and missingness | New unseen-category share or missingness shifts materially | ML engineering |
+
+Current status against these checks (test period vs training period):
+{{ M.n_significant | int }} features at or above {{ M.psi_alert | num(2) }},
+{{ M.n_moderate | int }} between {{ M.psi_warn | num(2) }} and {{ M.psi_alert | num(2) }};
+score PSI validation vs test {{ M.score_psi_valid_vs_test | num(3) }}; largest weekly
+score PSI {{ M.score_psi_max | num(3) }}; {{ r.decision.test_days_over_capacity | int }}
+days over review capacity. At launch these would already trigger the feature-PSI
+investigation; see FINDINGS.md.
+
+## Actions
+
+**Investigation** (any trigger above): the owner reviews within one working
+cycle, records cause (data pipeline fault, population change, fraud pattern
+change, seasonality) and decides: no action, threshold re-selection, or retrain.
+
+**Threshold re-selection without retraining**: when queue load breaches capacity
+for the configured run of days, when a cost parameter is re-measured, or when the
+decline rate leaves its band while ranking metrics hold. Re-run the decision
+stage on the latest matured-label window; fraud strategy signs off.
+
+**Retraining**: when matured-label PR-AUC falls by more than the configured
+relative drop, when score PSI exceeds the retraining level, or on a fixed
+quarterly schedule, whichever comes first. Retraining follows the same
+pre-registered procedure (time split, expanding-window CV inside training,
+thresholds selected on a later validation window, report-only test window) and
+is validated by model risk before promotion.
+
+**Rollback**: keep the previous model archive (JSON) and thresholds. If a new
+model's first matured-label month underperforms the previous model on net
+benefit at current cost parameters, revert.
+
+## Known gaps
+
+Label delay means performance signals arrive
+{{ PL.label_maturity_days | int }} days late; the drift and volume signals above are
+the early warnings. Chargeback labels are an imperfect proxy for fraud
+(FINDINGS.md).

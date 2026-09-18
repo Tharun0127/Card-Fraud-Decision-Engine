@@ -121,7 +121,7 @@ def swap_figure(sets: dict[str, pd.DataFrame], path) -> None:
     axes[1].set_xticks(x, prods)
     axes[1].set_ylabel("Share of set (%)")
     axes[1].set_title("Product code mix")
-    fig.suptitle("Swap set: declined by the Youden-J cutoff, approved by the profit-optimal cutoff (test)",
+    fig.suptitle("Swap set: transactions the Youden-J and profit-optimal cutoffs decide differently (test)",
                  fontweight="bold")
     _save(fig, path)
 

@@ -1,0 +1,278 @@
+{% set P = r.decision.policies_test.full %}
+{% set NV = r.decision.policies_test.no_velocity %}
+{% set C = r.decision.comparisons %}
+{% set A = r.decision.auc_vs_profit %}
+{% set E = r.evaluation %}
+{% set H = r.hypotheses %}
+{% set S = r.sensitivity.ranking %}
+{% set M = r.monitoring %}
+{% set D = r.data %}
+{% set F = r.features %}
+{% set MD = r.model %}
+{% set T = r.decision.thresholds %}
+# Model and decision-policy report
+
+Generated from `outputs/results.json` by `src/reporting/render.py`. Pre-registered
+plan: `PRE_REGISTRATION.md`. Deviations and limitations: `FINDINGS.md`.
+
+## Purpose and scope
+
+Assess (a) a LightGBM classifier that scores card-not-present transactions for
+fraud risk and (b) the decision policy that turns the score into approve, review
+or decline. The decision policy is the object under review; the classifier is an
+input to it. Out of scope: real-time serving, adversarial adaptation by
+fraudsters, and any claim about a specific institution's economics.
+
+## Data
+
+- Source: IEEE-CIS Fraud Detection (Vesta), labelled files only.
+  {{ D.n_rows | int }} transactions after joining identity to transactions;
+  {{ D.n_fraud | int }} labelled fraud ({{ D.fraud_rate | pct(2) }});
+  {{ D.identity_match_rate | pct(1) }} of transactions have an identity record.
+- Time: `TransactionDT` spans {{ D.dt_span_days | num(1) }} relative days. It is
+  an offset from an unknown reference and is used only for ordering and
+  durations. "Per day" figures are per relative day.
+- Split (time-ordered, ties kept together):
+
+| Split | Rows | Fraud rate | Relative days | Fraud $ |
+|---|---:|---:|---:|---:|
+{% for s in ["train", "valid", "test"] %}
+| {{ s }} | {{ D.by_split[s].n | int }} | {{ D.by_split[s].fraud_rate | pct(2) }} | {{ D.by_split[s].days | num(1) }} | {{ D.by_split[s].amt_fraud | usd }} |
+{% endfor %}
+
+Validation selects every threshold; test is used once for reporting.
+
+## Features
+
+{{ F.n_features | int }} features (cap {{ F.max_features | int }}):
+{{ F.by_family.raw | int }} raw provider columns,
+{{ F.by_family.vesta | int }} pruned Vesta V-columns,
+{{ F.by_family.velocity | int }} velocity,
+{{ F.by_family.entity_risk | int }} entity-risk (target-encoded) and
+{{ F.by_family.linkage | int }} linkage features. {{ F.n_dropped | int }} columns were
+dropped, each with a recorded reason (`outputs/tables/dropped_columns.csv`).
+
+- **Velocity**: per `card1` and per composite account key `uid`
+  (DECISIONS.md D0.4), counts and amount sums over the prior hour, day and week,
+  seconds since the previous transaction, prior transaction count, tenure, and
+  amount relative to the prior-week mean. Windows exclude the transaction itself,
+  same-second peers and all later rows; tested on a hand-built fixture.
+- **Entity risk**: smoothed target encoding (pseudo-count {{ F.te_smoothing | int }})
+  of product code, billing region and purchaser / recipient email domain.
+  Training rows are encoded out-of-fold over {{ F.te_folds | int }} contiguous
+  time blocks; later rows use training statistics only; unseen categories receive
+  the training prior.
+- **Linkage**: distinct cards per device string, per OS, per browser and per
+  device fingerprint; distinct purchaser emails, recipient emails and billing
+  regions per card. Only strictly earlier transactions plus the current one count.
+- High-cardinality strings use LightGBM native categorical handling with a
+  training-period vocabulary; no one-hot encoding.
+
+Share of model gain by family: raw {{ MD.gain_share_by_family.raw | pct(1) }},
+Vesta {{ MD.gain_share_by_family.vesta | pct(1) }},
+velocity {{ MD.gain_share_by_family.velocity | pct(1) }},
+entity risk {{ MD.gain_share_by_family.entity_risk | pct(1) }},
+linkage {{ MD.gain_share_by_family.linkage | pct(1) }}.
+Gain share is an in-sample attribution, not evidence of causal value.
+
+![Feature importance](outputs/figures/feature_importance.png)
+
+## Model
+
+LightGBM binary classifier, learning rate {{ MD.learning_rate | num(2) }}, tuned by
+grid search over {{ MD.n_grid_configs | int }} configurations with
+{{ MD.cv_folds | int }}-fold expanding-window cross-validation inside the training
+period. Chosen: {{ MD.chosen_params.num_leaves | int }} leaves, minimum
+{{ MD.chosen_params.min_child_samples | int }} rows per leaf, feature fraction
+{{ MD.chosen_params.feature_fraction | num(1) }}, {{ MD.num_rounds_full | int }} rounds
+(mean early-stopping round across folds). Mean CV PR-AUC
+{{ MD.cv_pr_auc_mean | num(4) }} (standard deviation {{ MD.cv_pr_auc_std | num(4) }}).
+The no-velocity model uses the same parameters, {{ MD.n_features_no_velocity | int }}
+features and {{ MD.num_rounds_no_velocity | int }} rounds (mean CV PR-AUC
+{{ MD.cv_no_velocity_pr_auc_mean | num(4) }}). Both are trained on the training split
+only ({{ MD.n_train_rows | int }} rows).
+
+## Discrimination on test
+
+| Metric | Full | No-velocity | Difference, paired bootstrap ({{ E.n_bootstrap | int }} resamples) |
+|---|---:|---:|---|
+| PR-AUC | {{ E.test.full.pr_auc | num(4) }} | {{ E.test.no_velocity.pr_auc | num(4) }} | {{ E.lift.pr_auc_full_minus_no_velocity | ci_num(4) }}; {{ E.lift.pr_auc_full_minus_no_velocity | verdict }} |
+| ROC-AUC | {{ E.test.full.roc_auc | num(4) }} | {{ E.test.no_velocity.roc_auc | num(4) }} | {{ E.lift.roc_auc_full_minus_no_velocity | ci_num(4) }}; {{ E.lift.roc_auc_full_minus_no_velocity | verdict }} |
+| Precision, top 1% | {{ E.test.full.precision_at_1pct | pct(1) }} | {{ E.test.no_velocity.precision_at_1pct | pct(1) }} | {{ E.lift.precision_at_1pct_full_minus_no_velocity | ci_pp(1) }}; {{ E.lift.precision_at_1pct_full_minus_no_velocity | verdict }} |
+| Recall, top 1% | {{ E.test.full.recall_at_1pct | pct(1) }} | {{ E.test.no_velocity.recall_at_1pct | pct(1) }} | {{ E.lift.recall_at_1pct_full_minus_no_velocity | ci_pp(1) }}; {{ E.lift.recall_at_1pct_full_minus_no_velocity | verdict }} |
+| Precision, top 5% | {{ E.test.full.precision_at_5pct | pct(1) }} | {{ E.test.no_velocity.precision_at_5pct | pct(1) }} | {{ E.lift.precision_at_5pct_full_minus_no_velocity | ci_pp(1) }}; {{ E.lift.precision_at_5pct_full_minus_no_velocity | verdict }} |
+| Recall, top 5% | {{ E.test.full.recall_at_5pct | pct(1) }} | {{ E.test.no_velocity.recall_at_5pct | pct(1) }} | {{ E.lift.recall_at_5pct_full_minus_no_velocity | ci_pp(1) }}; {{ E.lift.recall_at_5pct_full_minus_no_velocity | verdict }} |
+
+Precision and recall intervals hold the flagged set fixed (chosen on the full test
+split) and resample rows; they do not include the variability from re-ranking
+within each resample.
+
+**Rules baseline.** Declines when the amount exceeds
+{{ E.test.rules.amount_threshold | usd(2) }} (training-period P90) and the account
+key has no earlier transaction. It flags {{ E.test.rules.flag_rate | pct(2) }} of test
+transactions with precision {{ E.test.rules.precision | pct(1) if E.test.rules.n_flagged > 0 else 'undefined (nothing flagged)' }} and recall
+{{ E.test.rules.recall | pct(1) }}. At the same volume the full model reaches precision
+{{ E.test.full.precision_at_rules_volume | pct(1) if E.test.rules.n_flagged > 0 else 'undefined' }}
+({{ E.lift.precision_at_rules_volume_full_minus_rules | ci_pp(1) }};
+{{ E.lift.precision_at_rules_volume_full_minus_rules | verdict }}) and recall
+{{ E.test.full.recall_at_rules_volume | pct(1) }}
+({{ E.lift.recall_at_rules_volume_full_minus_rules | ci_pp(1) }}). Its ROC-AUC
+({{ E.test.rules.roc_auc_degenerate | num(4) }}) and PR-AUC
+({{ E.test.rules.pr_auc_degenerate | num(4) }}) are computed on a binary flag and
+are not comparable with a ranking model's.
+
+![Precision-recall curves](outputs/figures/pr_curves.png)
+
+## Decision layer
+
+### Cost model
+
+| Outcome | Cost | Default |
+|---|---|---|
+| Fraud approved | transaction amount | |
+| Legitimate declined | margin rate x amount + churn penalty | {{ r.costs.margin_rate | num(2) }} and {{ r.costs.churn_penalty | usd }} |
+| Sent to review | review cost; a reviewed fraud is missed with probability one minus the catch rate | {{ r.costs.review_cost | usd }}; catch rate {{ r.costs.review_catch_rate | num(2) }} |
+
+Review capacity: {{ r.costs.max_reviews_per_day | num(1) }} cases per relative day,
+{{ r.costs.review_capacity_share | pct(0) }} of mean daily training-period volume.
+
+### Policies on test (thresholds from validation)
+
+| Policy | Net benefit per {{ r.meta.per_n_transactions | int }} | Total cost | Fraud loss left | False-decline cost | Review cost | Disruption rate | Legit sent to review | Capture (count) | Capture ($) | Reviews per day |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+{% for key, label in [("approve_all", "Approve everything"), ("rules", "Rules baseline"), ("youden_single", "Youden-J cutoff"), ("profit_single", "Profit-optimal cutoff"), ("profit_three_way", "Three-way, capacity-constrained")] %}
+{% set s = P[key] %}
+| {{ label }} | {{ s.net_benefit_per_1000 | usd(2) }} | {{ s.total_cost | usd }} | {{ s.fraud_loss_remaining | usd }} | {{ s.false_decline_cost | usd }} | {{ s.review_cost_total | usd }} | {{ s.good_customer_disruption_rate | pct(2) }} | {{ s.good_customer_review_rate | pct(2) }} | {{ s.fraud_capture_rate_count | pct(1) }} | {{ s.fraud_capture_rate_dollars | pct(1) }} | {{ s.reviews_per_day | num(1) }} |
+{% endfor %}
+| No-velocity model, three-way | {{ NV.profit_three_way.net_benefit_per_1000 | usd(2) }} | {{ NV.profit_three_way.total_cost | usd }} | {{ NV.profit_three_way.fraud_loss_remaining | usd }} | {{ NV.profit_three_way.false_decline_cost | usd }} | {{ NV.profit_three_way.review_cost_total | usd }} | {{ NV.profit_three_way.good_customer_disruption_rate | pct(2) }} | {{ NV.profit_three_way.good_customer_review_rate | pct(2) }} | {{ NV.profit_three_way.fraud_capture_rate_count | pct(1) }} | {{ NV.profit_three_way.fraud_capture_rate_dollars | pct(1) }} | {{ NV.profit_three_way.reviews_per_day | num(1) }} |
+
+Selected thresholds (full model): Youden-J {{ T.full.t_youden | num(4) }};
+profit-optimal {{ T.full.t_profit | num(4) }}; three-way review from
+{{ T.full.t_review | num(4) }}, decline from {{ T.full.t_decline | num(4) }}.
+
+The three-way pair was chosen on validation subject to the capacity limit
+(validation load {{ r.decision.validation_three_way.reviews_per_day | num(1) }} per day).
+On test the policy produced a mean of {{ P.profit_three_way.reviews_per_day | num(1) }}
+reviews per day, a busiest day of {{ r.decision.test_reviews_per_day_max | int }}, and
+{{ r.decision.test_days_over_capacity | int }} of {{ r.decision.test_n_days | int }}
+relative days above capacity. A deployed queue would need either slack capacity or
+a daily cap with overflow rules; this analysis does not model overflow.
+
+![Three-way policy search](outputs/figures/three_way_policy.png)
+
+### Comparisons (paired bootstrap, $ per {{ r.meta.per_n_transactions | int }} test transactions)
+
+| Comparison | Difference | Reading |
+|---|---|---|
+{% for key, label in [("profit_single_minus_youden_single", "Profit-optimal minus Youden-J (H1)"), ("three_way_minus_rules", "Three-way minus rules (H2)"), ("three_way_minus_profit_single", "Three-way minus single profit-optimal"), ("three_way_full_minus_three_way_no_velocity", "Full minus no-velocity, both three-way"), ("three_way_minus_approve_all", "Three-way minus approve-all"), ("youden_minus_approve_all", "Youden-J minus approve-all"), ("rules_minus_approve_all", "Rules minus approve-all")] %}
+| {{ label }} | {{ C[key] | ci_usd(2) }} | {{ C[key] | verdict }} |
+{% endfor %}
+
+### AUC-optimal versus profit-optimal
+
+Youden's J maximises true-positive rate minus false-positive rate, which is
+optimal only if a missed fraud and a false decline carry equal weight per unit
+rate. Here they do not. The profit-optimal cutoff is
+{{ A.t_profit | num(4) }} against Youden-J's {{ A.t_youden | num(4) }}.
+The Youden-J cutoff declines {{ A.decline_rate_ratio_youden_over_profit | num(1) }}
+times as many transactions. The difference in test net benefit is
+{{ C.profit_single_minus_youden_single | ci_usd(2) }} per
+{{ r.meta.per_n_transactions | int }} transactions, or
+{{ A.money_left_on_table_total_test | usd }} across the test period.
+
+On validation, where both were chosen: Youden-J net benefit
+{{ A.validation.youden_single.net_benefit_per_1000 | usd(2) }} and profit-optimal
+{{ A.validation.profit_single.net_benefit_per_1000 | usd(2) }} per
+{{ r.meta.per_n_transactions | int }}. The test oracle threshold
+({{ A.test_oracle_threshold | num(4) }}, chosen with test labels, not achievable)
+would have given {{ A.test_oracle_net_benefit_per_1000 | usd(2) }}.
+
+### Swap set
+
+Transactions on which the two cutoffs disagree (test split).
+
+| Set | Transactions | Fraud rate | Fraud | Amount total | Median amount | Amount P95 | Median tenure (days) | New account share |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+{% for row in r.decision.swap.rows %}
+{% if row.n > 0 %}
+| {{ row.set }} | {{ row.n | int }} | {{ row.fraud_rate | pct(2) }} | {{ row.n_fraud | int }} | {{ row.amount_total | usd }} | {{ row.amount_median | usd(2) }} | {{ row.amount_p95 | usd(2) }} | {{ row.tenure_days_median | num(1) }} | {{ row.share_new_card | pct(1) }} |
+{% else %}
+| {{ row.set }} | {{ row.n | int }} | | | | | | | |
+{% endif %}
+{% endfor %}
+
+The decline sets of two cutoffs on one score are nested, so one direction is
+empty by construction. Within the swap set, the profit-optimal policy's net
+benefit is {{ r.decision.swap.swap_set_net_benefit_profit | usd }} and the Youden-J
+policy's is {{ r.decision.swap.swap_set_net_benefit_youden | usd }}.
+{% if r.decision.swap.profit_declines_fewer %}
+These are transactions only the Youden-J cutoff declines; declining them
+{{ "costs more in false declines than the fraud it stops" if r.decision.swap.swap_set_net_benefit_youden < r.decision.swap.swap_set_net_benefit_profit else "stops more fraud than it costs in false declines" }}.
+{% else %}
+These are transactions only the profit-optimal cutoff declines.
+{% endif %}
+Product-code shares per set are in `outputs/tables/swap_set.csv`.
+
+![Swap set](outputs/figures/swap_set.png)
+
+## Sensitivity to cost assumptions
+
+The pre-registered grid has {{ r.sensitivity.n_cells | int }} cells (margin rate,
+churn penalty, review cost, catch rate). At every cell the thresholds are
+re-selected on validation and valued on test.
+
+| Result | Value |
+|---|---:|
+| Three-way policy, test net benefit per {{ r.meta.per_n_transactions | int }}: lowest cell | {{ r.sensitivity.net_benefit_per_1000_range.nb1000_profit_three_way.min | usd }} |
+| Three-way policy, test net benefit per {{ r.meta.per_n_transactions | int }}: highest cell | {{ r.sensitivity.net_benefit_per_1000_range.nb1000_profit_three_way.max | usd }} |
+| Share of validation declined at the profit-optimal cutoff: lowest to highest | {{ r.sensitivity.decline_rate_range[0] | pct(2) }} to {{ r.sensitivity.decline_rate_range[1] | pct(2) }} |
+| Cells where three-way at least matches the single profit cutoff | {{ S.share_three_way_ge_single | pct(1) }} |
+| Cells where profit-optimal cutoff beats Youden-J | {{ S.share_single_gt_youden | pct(1) }} |
+| Cells where three-way beats rules | {{ S.share_model_gt_rules | pct(1) }} |
+| Cells where all three orderings hold (H4) | {{ S.share_all_orderings | pct(1) }} |
+| Cells where the three-way policy beats approve-all | {{ S.share_three_way_positive | pct(1) }} |
+
+The absolute value of the policy moves by a wide margin with the assumptions; a
+reader should treat any single dollar figure as conditional on them. The ranking
+statement is the one this analysis supports
+{%- if H.H4.pass %}, and it holds in the pre-registered share of cells{% else %}, and even that does not hold in the pre-registered share of cells; see FINDINGS.md{% endif %}.
+
+![Threshold vs margin and churn](outputs/figures/sensitivity_threshold_margin_churn.png)
+![Review threshold vs review cost and catch rate](outputs/figures/sensitivity_review_threshold.png)
+![Ranking margin across the grid](outputs/figures/sensitivity_ranking_gap.png)
+
+Review capacity (default costs):
+
+| Capacity share of daily volume | Reviews per day allowed | Test net benefit per {{ r.meta.per_n_transactions | int }} | Test reviews per day | Disruption rate |
+|---:|---:|---:|---:|---:|
+{% for c in r.sensitivity.capacity %}
+| {{ c.review_capacity_share | pct(1) }} | {{ c.max_reviews_per_day | num(1) }} | {{ c.net_benefit_per_1000 | usd(2) }} | {{ c.reviews_per_day | num(1) }} | {{ c.good_customer_disruption_rate | pct(2) }} |
+{% endfor %}
+
+## Stability
+
+{{ M.n_significant | int }} of {{ M.n_features | int }} features have PSI at or above
+{{ M.psi_alert | num(2) }} between the training and test periods, and
+{{ M.n_moderate | int }} are between {{ M.psi_warn | num(2) }} and {{ M.psi_alert | num(2) }}.
+The largest is {{ M.max_psi | num(2) }}. Score PSI between validation and test is
+{{ M.score_psi_valid_vs_test | num(3) }}; across {{ M.score_window_days | int }}-day
+windows of the test period the largest window PSI is {{ M.score_psi_max | num(3) }}
+and window PR-AUC ranges from {{ M.pr_auc_window_min | num(3) }} to
+{{ M.pr_auc_window_max | num(3) }}. Details: `outputs/tables/psi_train_vs_test.csv`,
+`outputs/tables/score_stability_test.csv`, FINDINGS.md and MONITORING_PLAN.md.
+
+![PSI](outputs/figures/psi_top_features.png)
+![Score stability](outputs/figures/score_stability.png)
+
+## Pre-registered hypotheses
+
+| Hypothesis | Result |
+|---|---|
+| H1: profit-optimal cutoff beats Youden-J on test net benefit, interval excluding zero | {{ H.H1.pass | passfail }} |
+| H2: three-way policy beats rules baseline on test net benefit, interval excluding zero | {{ H.H2.pass | passfail }} |
+| H3: full model PR-AUC exceeds no-velocity model, interval excluding zero | {{ H.H3.pass | passfail }} |
+| H4: orderings hold in at least {{ H.H4.threshold_share | pct(0) }} of sensitivity cells | {{ H.H4.pass | passfail }} |
+| Project success (H1 and H2) | {{ H.project_success | passfail }} |
+
+Environment: Python {{ r.meta.python_minor | num(2) }}, LightGBM `{{ r.meta.lightgbm_version }}`,
+seed {{ r.meta.seed | int }}.

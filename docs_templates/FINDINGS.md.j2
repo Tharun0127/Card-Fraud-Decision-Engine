@@ -1,0 +1,234 @@
+{% set P = r.decision.policies_test.full %}
+{% set C = r.decision.comparisons %}
+{% set E = r.evaluation %}
+{% set H = r.hypotheses %}
+{% set S = r.sensitivity.ranking %}
+{% set M = r.monitoring %}
+{% set NB = r.sensitivity.net_benefit_per_1000_range.nb1000_profit_three_way %}
+# Findings: limitations and deviations
+
+Generated from `outputs/results.json`. Severity reflects how much a finding
+could change a decision made on the basis of this repository: **High** = could
+reverse or invalidate a headline conclusion; **Medium** = changes the size of a
+result or its applicability; **Low** = worth knowing, unlikely to change a
+conclusion.
+
+## Summary
+
+| Finding | Severity |
+|---|---|
+| Cost parameters are assumptions, not measurements | High |
+| Labels are chargebacks with account-level propagation, not confirmed fraud | High |
+| Feature drift between training and test periods | {{ "High" if M.n_significant >= 10 else "Medium" if M.n_significant > 0 else "Low" }} |
+{% for h in ["H1", "H2", "H3", "H4"] %}
+{% if not H[h].pass %}
+| Pre-registered hypothesis {{ h }} failed | {{ "High" if h in ["H1", "H2"] else "Medium" }} |
+{% endif %}
+{% endfor %}
+| No true timestamp; relative time only | Medium |
+| Confidence intervals cover row sampling, not period-to-period variation | Medium |
+| Label delay not modelled | Medium |
+| Review capacity is a daily average, not enforced per day | {{ "Medium" if r.decision.test_days_over_capacity > 0 else "Low" }} |
+| Out-of-fold target encoding uses later training blocks for earlier rows | Low |
+| Feature-fitting steps precede cross-validation | Low |
+| Composite account key is a proxy | Low |
+| Reviewed legitimate customers assumed approved; reviews assumed independent of queue load | Low |
+
+## High
+
+### Cost parameters are assumptions
+
+**What.** Margin rate {{ r.costs.margin_rate | num(2) }}, churn penalty
+{{ r.costs.churn_penalty | usd }}, review cost {{ r.costs.review_cost | usd }} and catch
+rate {{ r.costs.review_catch_rate | num(2) }} were set in PRE_REGISTRATION.md from
+general reasoning, not from any issuer's or merchant's data. Fraud loss is taken
+as the full transaction amount, ignoring chargeback fees, recoveries and
+liability shift.
+
+**Impact.** Across the pre-registered grid the three-way policy's test net
+benefit ranges from {{ NB.min | usd }} to {{ NB.max | usd }} per
+{{ r.meta.per_n_transactions | int }} transactions. No absolute dollar figure in
+this repository should be quoted as an estimate of real savings. The ordering of
+policies holds in {{ S.share_all_orderings | pct(1) }} of cells (all three orderings
+jointly), which is the supportable claim.
+
+**Recommendation.** Replace each parameter with a measured value before use:
+margin from finance, churn penalty from a holdout of declined-then-lost
+customers, review cost and catch rate from the review team's case data.
+Re-run `make decide`; the thresholds re-select automatically.
+
+### Labels are chargebacks, not confirmed fraud
+
+**What.** `isFraud` = 1 when a chargeback was reported on the card, and the
+provider propagated the label to later transactions of the same account, email
+or billing address. Friendly fraud and merchant disputes count as fraud; fraud
+that was never disputed counts as legitimate.
+
+**Impact.** The model learns chargeback propensity. Because labels are
+propagated at account level, account-level features (the `uid` velocity family
+in particular) can learn "this account was already labelled" rather than "this
+transaction is fraud". This inflates measured performance in a way a production
+system, which learns labels weeks later, would not see. The measured value of
+the velocity family
+{%- if H.H3.pass %} (H3 passed){% else %} (H3 did not pass){% endif %}
+should be read with this in mind.
+
+**Recommendation.** In production, train only on labels matured by the
+chargeback window, and evaluate with a label-delay simulation: features at
+decision time, labels only as of their availability date.
+
+### Feature drift between training and test
+
+**What.** {{ M.n_significant | int }} of {{ M.n_features | int }} features have PSI at
+or above {{ M.psi_alert | num(2) }} between the training and test periods;
+{{ M.n_moderate | int }} more lie between {{ M.psi_warn | num(2) }} and
+{{ M.psi_alert | num(2) }}. Largest PSI {{ M.max_psi | num(2) }}.
+{% if M.significant_features %}
+
+| Feature breaching the alert band | Family | PSI |
+|---|---|---:|
+{% for f in M.significant_features %}
+| `{{ f.feature }}` | {{ f.family }} | {{ f.psi | num(3) }} |
+{% endfor %}
+{% endif %}
+{% if M.moderate_features %}
+
+Features in the investigate band: {% for f in M.moderate_features %}`{{ f.feature }}` ({{ f.psi | num(3) }}){{ ", " if not loop.last else "." }}{% endfor %}
+
+{% endif %}
+
+**Impact.** Counters and time-deltas that grow with elapsed time (prior counts,
+tenure, the D-columns) drift by construction because the test period has more
+history behind it. Others reflect population change. Drifting features can
+make the score's calibration and the chosen thresholds stale. Score-level PSI
+between validation and test is {{ M.score_psi_valid_vs_test | num(3) }}.
+
+**Recommendation.** Before deployment, replace unbounded cumulative counters
+with windowed versions, or normalise them by account age. Monitor per
+MONITORING_PLAN.md.
+
+{% if not (H.H1.pass and H.H2.pass and H.H3.pass and H.H4.pass) %}
+### Failed pre-registered hypotheses
+
+{% if not H.H1.pass %}
+- **H1 failed.** Profit-optimal minus Youden-J:
+  {{ C.profit_single_minus_youden_single | ci_usd(2) }} per
+  {{ r.meta.per_n_transactions | int }}; {{ C.profit_single_minus_youden_single | verdict }}.
+{% endif %}
+{% if not H.H2.pass %}
+- **H2 failed.** Three-way minus rules: {{ C.three_way_minus_rules | ci_usd(2) }};
+  {{ C.three_way_minus_rules | verdict }}.
+{% endif %}
+{% if not H.H3.pass %}
+- **H3 failed.** PR-AUC full minus no-velocity:
+  {{ E.lift.pr_auc_full_minus_no_velocity | ci_num(4) }};
+  {{ E.lift.pr_auc_full_minus_no_velocity | verdict }}. The velocity family's
+  contribution to ranking quality is not established on this test period.
+{% endif %}
+{% if not H.H4.pass %}
+- **H4 failed.** All three orderings held in {{ S.share_all_orderings | pct(1) }}
+  of sensitivity cells, below the pre-registered {{ H.H4.threshold_share | pct(0) }}.
+  Individually: three-way at least single cutoff {{ S.share_three_way_ge_single | pct(1) }},
+  profit cutoff above Youden-J {{ S.share_single_gt_youden | pct(1) }}, three-way above
+  rules {{ S.share_model_gt_rules | pct(1) }}. The ranking claim is therefore limited
+  to the orderings that do hold broadly.
+{% endif %}
+
+**Impact / recommendation.** A failed hypothesis is reported as failed and was
+not re-tested under a different metric or split. Treat the corresponding claim
+as unsupported by this analysis.
+{% endif %}
+
+## Medium
+
+### No true timestamp
+
+**What.** `TransactionDT` is an offset in seconds from an undisclosed reference.
+**Impact.** "Per day" figures (review capacity, reviews per day, money per day)
+are per relative day. The `hour_proxy` feature assumes the reference is midnight,
+which is unverified; if it is not, the feature is a shifted hour and still
+internally consistent. No weekday or seasonal claims are made.
+**Recommendation.** Use real timestamps and the review team's actual working
+calendar in production.
+
+### Intervals cover row sampling only
+
+**What.** All intervals come from a paired bootstrap over transactions in one
+test period ({{ E.test_days | num(1) }} relative days).
+**Impact.** They do not capture variation between periods, fraud-pattern shifts,
+or repeated transactions from the same account (rows are not independent).
+Intervals are likely too narrow.
+**Recommendation.** Rolling-origin evaluation over several periods, with a
+block bootstrap by account.
+
+### Label delay not modelled
+
+**What.** Entity-risk encodings use all training-period labels as if known at the
+end of training. In practice chargebacks arrive with a delay of weeks.
+**Impact.** Validation and test are scored with encodings that a deployed system
+would have only partly. The effect on the headline is likely small (encodings are
+fitted on training labels only) but unmeasured.
+**Recommendation.** Fit encodings on labels matured by
+{{ M.plan.label_maturity_days | int }} days before the scoring date.
+
+### Review capacity is an average
+
+**What.** The three-way policy was selected so that validation reviews per
+relative day do not exceed {{ r.costs.max_reviews_per_day | num(1) }}. Nothing enforces
+a per-day cap.
+**Impact.** On test, mean load was {{ P.profit_three_way.reviews_per_day | num(1) }} per
+day, busiest day {{ r.decision.test_reviews_per_day_max | int }};
+{{ r.decision.test_days_over_capacity | int }} of {{ r.decision.test_n_days | int }}
+days exceeded capacity. Overflow handling (auto-approve, auto-decline, or backlog)
+changes the realised value and is not modelled.
+**Recommendation.** Add an explicit overflow rule and value it; size capacity to a
+high percentile of daily load rather than the mean.
+
+## Low
+
+### Out-of-fold target encoding uses later training blocks
+
+**What.** Training rows are encoded with statistics from the other time blocks of
+the training period, including later ones.
+**Impact.** Training rows see a mildly "future-informed" encoding that validation
+and test rows do not. This is the standard out-of-fold construction the brief
+asked for; it can make training-period CV slightly optimistic. Validation and test
+encodings use training labels only and are unaffected.
+**Recommendation.** An expanding-window encoding (earlier blocks only) is the
+stricter alternative.
+
+### Feature fitting precedes cross-validation
+
+**What.** V-column selection, categorical vocabularies and target encodings were
+fitted on the whole training period and then used inside the expanding-window CV.
+**Impact.** Early CV folds are scored with features fitted partly on later
+training data, so CV PR-AUC ({{ r.model.cv_pr_auc_mean | num(4) }}) may be optimistic.
+CV was used only to choose among {{ r.model.n_grid_configs | int }} configurations and
+the round count, not for any reported test metric.
+**Recommendation.** Refit feature steps inside each fold if CV numbers are used
+for anything beyond relative ranking of configurations.
+
+### Composite account key is a proxy
+
+**What.** `uid` combines card attributes, billing region and implied account-open
+day (DECISIONS.md D0.4).
+**Impact.** Collisions merge different customers; missing `addr1` or `D1` splits
+one customer into several keys. Velocity counts are noisy as a result, and the
+rules baseline's "new card" flag inherits the same noise.
+**Recommendation.** Use the issuer's card or account token in production.
+
+### Review assumptions
+
+**What.** A reviewed legitimate transaction is assumed approved at the cost of
+review alone; catch rate is assumed constant regardless of queue length.
+**Impact.** Real queues produce analyst false declines and customer friction from
+delay, and quality falls as load rises. The three-way policy's advantage is
+likely overstated by an unknown amount.
+**Recommendation.** Measure analyst outcomes and model catch rate as a function of
+load.
+
+## Deviations from the pre-registration
+
+See the list below. Each deviation is also recorded in DECISIONS.md.
+
+{% include "deviations.md.j2" %}
