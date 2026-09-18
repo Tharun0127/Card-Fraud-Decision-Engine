@@ -1,10 +1,3 @@
-{% set P = r.decision.policies_test.full %}
-{% set C = r.decision.comparisons %}
-{% set E = r.evaluation %}
-{% set H = r.hypotheses %}
-{% set S = r.sensitivity.ranking %}
-{% set M = r.monitoring %}
-{% set NB = r.sensitivity.net_benefit_per_1000_range.nb1000_profit_three_way %}
 # Findings: limitations and deviations
 
 Generated from `outputs/results.json`. Severity reflects how much a finding
@@ -19,16 +12,12 @@ conclusion.
 |---|---|
 | Cost parameters are assumptions, not measurements | High |
 | Labels are chargebacks with account-level propagation, not confirmed fraud | High |
-| Feature drift between training and test periods | {{ "High" if M.n_significant >= 10 else "Medium" if M.n_significant > 0 else "Low" }} |
-{% for h in ["H1", "H2", "H3", "H4"] %}
-{% if not H[h].pass %}
-| Pre-registered hypothesis {{ h }} failed | {{ "High" if h in ["H1", "H2"] else "Medium" }} |
-{% endif %}
-{% endfor %}
+| Feature drift between training and test periods | High |
+| Pre-registered hypothesis H4 failed | Medium |
 | No true timestamp; relative time only | Medium |
 | Confidence intervals cover row sampling, not period-to-period variation | Medium |
 | Label delay not modelled | Medium |
-| Review capacity is a daily average, not enforced per day | {{ "Medium" if r.decision.test_days_over_capacity > 0 else "Low" }} |
+| Review capacity is a daily average, not enforced per day | Medium |
 | Out-of-fold target encoding uses later training blocks for earlier rows | Low |
 | Feature-fitting steps precede cross-validation | Low |
 | Composite account key is a proxy | Low |
@@ -38,18 +27,18 @@ conclusion.
 
 ### Cost parameters are assumptions
 
-**What.** Margin rate {{ r.costs.margin_rate | num(2) }}, churn penalty
-{{ r.costs.churn_penalty | usd }}, review cost {{ r.costs.review_cost | usd }} and catch
-rate {{ r.costs.review_catch_rate | num(2) }} were set in PRE_REGISTRATION.md from
+**What.** Margin rate 0.02, churn penalty
+$10, review cost $5 and catch
+rate 0.85 were set in PRE_REGISTRATION.md from
 general reasoning, not from any issuer's or merchant's data. Fraud loss is taken
 as the full transaction amount, ignoring chargeback fees, recoveries and
 liability shift.
 
 **Impact.** Across the pre-registered grid the three-way policy's test net
-benefit ranges from {{ NB.min | usd }} to {{ NB.max | usd }} per
-{{ r.meta.per_n_transactions | int }} transactions. No absolute dollar figure in
+benefit ranges from $1,649 to $4,670 per
+1,000 transactions. No absolute dollar figure in
 this repository should be quoted as an estimate of real savings. The ordering of
-policies holds in {{ S.share_all_orderings | pct(1) }} of cells (all three orderings
+policies holds in 60.7% of cells (all three orderings
 jointly), which is the supportable claim.
 
 **Recommendation.** Replace each parameter with a measured value before use:
@@ -69,9 +58,7 @@ propagated at account level, account-level features (the `uid` velocity family
 in particular) can learn "this account was already labelled" rather than "this
 transaction is fraud". This inflates measured performance in a way a production
 system, which learns labels weeks later, would not see. The measured value of
-the velocity family
-{%- if H.H3.pass %} (H3 passed){% else %} (H3 did not pass){% endif %}
-should be read with this in mind.
+the velocity family (H3 passed)should be read with this in mind.
 
 **Recommendation.** In production, train only on labels matured by the
 chargeback window, and evaluate with a label-delay simulation: features at
@@ -79,23 +66,32 @@ decision time, labels only as of their availability date.
 
 ### Feature drift between training and test
 
-**What.** {{ M.n_significant | int }} of {{ M.n_features | int }} features have PSI at
-or above {{ M.psi_alert | num(2) }} between the training and test periods;
-{{ M.n_moderate | int }} more lie between {{ M.psi_warn | num(2) }} and
-{{ M.psi_alert | num(2) }}. Largest PSI {{ M.max_psi | num(2) }}.
-{% if M.significant_features %}
+**What.** 17 of 148 features have PSI at
+or above 0.25 between the training and test periods;
+6 more lie between 0.10 and
+0.25. Largest PSI 5.46.
 
 | Feature breaching the alert band | Family | PSI |
 |---|---|---:|
-{% for f in M.significant_features %}
-| `{{ f.feature }}` | {{ f.family }} | {{ f.psi | num(3) }} |
-{% endfor %}
-{% endif %}
-{% if M.moderate_features %}
+| `vel_card1_tenure_days` | velocity | 5.462 |
+| `te_R_emaildomain` | entity_risk | 4.491 |
+| `te_ProductCD` | entity_risk | 4.370 |
+| `te_P_emaildomain` | entity_risk | 3.340 |
+| `id_31` | raw | 1.080 |
+| `lnk_cards_per_id30` | linkage | 0.771 |
+| `id_13` | raw | 0.533 |
+| `lnk_cards_per_deviceinfo` | linkage | 0.474 |
+| `vel_card1_prior_cnt` | velocity | 0.337 |
+| `D11` | raw | 0.331 |
+| `M9` | raw | 0.331 |
+| `M8` | raw | 0.330 |
+| `M7` | raw | 0.330 |
+| `vel_uid_tenure_days` | velocity | 0.288 |
+| `M2` | raw | 0.280 |
+| `M3` | raw | 0.279 |
+| `M1` | raw | 0.279 |
 
-Features in the investigate band: {% for f in M.moderate_features %}`{{ f.feature }}` ({{ f.psi | num(3) }}){{ ", " if not loop.last else "." }}{% endfor %}
-
-{% endif %}
+Features in the investigate band: `id_30` (0.246), `te_addr1` (0.165), `lnk_cards_per_id31` (0.159), `lnk_pemails_per_card` (0.149), `lnk_remails_per_card` (0.124), `vel_uid_prior_cnt` (0.114).
 
 **Impact.** Counters and time-deltas that grow with elapsed time (prior counts,
 tenure, the D-columns) drift by construction because the test period has more
@@ -107,43 +103,24 @@ binning on the training values turns that into a large PSI even without any chan
 in the population. It is nonetheless a real train/serve difference, because the
 model's splits were learned on the out-of-fold values. Others reflect population change. Drifting features can
 make the score's calibration and the chosen thresholds stale. Score-level PSI
-between validation and test is {{ M.score_psi_valid_vs_test | num(3) }}.
+between validation and test is 0.009.
 
 **Recommendation.** Before deployment, replace unbounded cumulative counters
 with windowed versions, or normalise them by account age. Monitor per
 MONITORING_PLAN.md.
 
-{% if not (H.H1.pass and H.H2.pass and H.H3.pass and H.H4.pass) %}
 ### Failed pre-registered hypotheses
 
-{% if not H.H1.pass %}
-- **H1 failed.** Profit-optimal minus Youden-J:
-  {{ C.profit_single_minus_youden_single | ci_usd(2) }} per
-  {{ r.meta.per_n_transactions | int }}; {{ C.profit_single_minus_youden_single | verdict }}.
-{% endif %}
-{% if not H.H2.pass %}
-- **H2 failed.** Three-way minus rules: {{ C.three_way_minus_rules | ci_usd(2) }};
-  {{ C.three_way_minus_rules | verdict }}.
-{% endif %}
-{% if not H.H3.pass %}
-- **H3 failed.** PR-AUC full minus no-velocity:
-  {{ E.lift.pr_auc_full_minus_no_velocity | ci_num(4) }};
-  {{ E.lift.pr_auc_full_minus_no_velocity | verdict }}. The velocity family's
-  contribution to ranking quality is not established on this test period.
-{% endif %}
-{% if not H.H4.pass %}
-- **H4 failed.** All three orderings held in {{ S.share_all_orderings | pct(1) }}
-  of sensitivity cells, below the pre-registered {{ H.H4.threshold_share | pct(0) }}.
-  Individually: three-way at least single cutoff {{ S.share_three_way_ge_single | pct(1) }},
-  profit cutoff above Youden-J {{ S.share_single_gt_youden | pct(1) }}, three-way above
-  rules {{ S.share_model_gt_rules | pct(1) }}. The ranking claim is therefore limited
+- **H4 failed.** All three orderings held in 60.7%
+  of sensitivity cells, below the pre-registered 80%.
+  Individually: three-way at least single cutoff 74.9%,
+  profit cutoff above Youden-J 80.0%, three-way above
+  rules 100.0%. The ranking claim is therefore limited
   to the orderings that do hold broadly.
-{% endif %}
 
 **Impact / recommendation.** A failed hypothesis is reported as failed and was
 not re-tested under a different metric or split. Treat the corresponding claim
 as unsupported by this analysis.
-{% endif %}
 
 ## Medium
 
@@ -160,7 +137,7 @@ calendar in production.
 ### Intervals cover row sampling only
 
 **What.** All intervals come from a paired bootstrap over transactions in one
-test period ({{ E.test_days | num(1) }} relative days).
+test period (30.8 relative days).
 **Impact.** They do not capture variation between periods, fraud-pattern shifts,
 or repeated transactions from the same account (rows are not independent).
 Intervals are likely too narrow.
@@ -175,16 +152,16 @@ end of training. In practice chargebacks arrive with a delay of weeks.
 would have only partly. The effect on the headline is likely small (encodings are
 fitted on training labels only) but unmeasured.
 **Recommendation.** Fit encodings on labels matured by
-{{ M.plan.label_maturity_days | int }} days before the scoring date.
+90 days before the scoring date.
 
 ### Review capacity is an average
 
 **What.** The three-way policy was selected so that validation reviews per
-relative day do not exceed {{ r.costs.max_reviews_per_day | num(1) }}. Nothing enforces
+relative day do not exceed 34.5. Nothing enforces
 a per-day cap.
-**Impact.** On test, mean load was {{ P.profit_three_way.reviews_per_day | num(1) }} per
-day, busiest day {{ r.decision.test_reviews_per_day_max | int }};
-{{ r.decision.test_days_over_capacity | int }} of {{ r.decision.test_n_days | int }}
+**Impact.** On test, mean load was 38.2 per
+day, busiest day 56;
+20 of 31
 days exceeded capacity. Overflow handling (auto-approve, auto-decline, or backlog)
 changes the realised value and is not modelled.
 **Recommendation.** Add an explicit overflow rule and value it; size capacity to a
@@ -207,8 +184,8 @@ stricter alternative.
 **What.** V-column selection, categorical vocabularies and target encodings were
 fitted on the whole training period and then used inside the expanding-window CV.
 **Impact.** Early CV folds are scored with features fitted partly on later
-training data, so CV PR-AUC ({{ r.model.cv_pr_auc_mean | num(4) }}) may be optimistic.
-CV was used only to choose among {{ r.model.n_grid_configs | int }} configurations and
+training data, so CV PR-AUC (0.6025) may be optimistic.
+CV was used only to choose among 4 configurations and
 the round count, not for any reported test metric.
 **Recommendation.** Refit feature steps inside each fold if CV numbers are used
 for anything beyond relative ranking of configurations.
@@ -236,4 +213,23 @@ load.
 
 See the list below. Each deviation is also recorded in DECISIONS.md.
 
-{% include "deviations.md.j2" %}
+- **D-1 Data source (severity: Low for results, Medium for licensing).**
+  PRE_REGISTRATION.md specifies downloading the competition files through the
+  Kaggle competition API. That download was refused because the competition
+  rules had not been accepted on the account used. The labelled files were instead
+  taken from the public Kaggle dataset `lnasiri007/ieeecis-fraud-detection`, a third-party
+  re-upload of the same competition files.
+  *Integrity:* each file matched the byte size on the official competition
+  listing exactly (`train_transaction.csv`: 683,351,067 bytes;
+  `train_identity.csv`: 26,529,680 bytes), and the
+  merged table has 590,540 rows, the expected count. SHA-256 hashes are
+  recorded in `outputs/results.json` under `data.provenance`.
+  *Impact:* none expected on any result, since the files match the official release in byte size
+  and row count; a content-level comparison was not possible without the official
+  download. The mirror is not an official
+  distribution; the competition's data-use terms still apply to the data.
+  *Recommendation:* anyone reproducing this should accept the competition rules and
+  set `kaggle.source: competition` in `config/pipeline.yaml`; the same size checks
+  then apply to the official download.
+- No other deviations. The split rule, metrics, baselines, cost ranges, success rule
+  and seed were used as pre-registered.

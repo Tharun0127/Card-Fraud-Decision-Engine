@@ -29,11 +29,14 @@ cutoff**. Every result is reported in money and customer impact, not only in AUC
   capturing {{ P0.profit_three_way.fraud_capture_rate_dollars | pct(1) }} of fraud dollars.
 - **AUC-optimal vs profit-optimal:** {% if r.decision.auc_vs_profit.money_left_on_table_per_1000 > 0 %}the Youden-J cutoff leaves
   {{ r.decision.auc_vs_profit.money_left_on_table_per_1000 | usd(2) }} per {{ r.meta.per_n_transactions | int }}
-  transactions on the table{% else %}the Youden-J cutoff did not lose money against the profit-optimal cutoff on this test period
+  transactions on the table{%- else %}the Youden-J cutoff did not lose money against the profit-optimal cutoff on this test period
   (difference {{ r.decision.auc_vs_profit.money_left_on_table_per_1000 | usd(2) }} per {{ r.meta.per_n_transactions | int }}){% endif %}
   ({{ r.decision.comparisons.profit_single_minus_youden_single | verdict }}).
 - **Against a hand-written rules baseline:** {{ r.decision.comparisons.three_way_minus_rules | ci_usd(0) }}
   more per {{ r.meta.per_n_transactions | int }} transactions.
+- **Robustness to the cost assumptions:** beats the rules baseline in {{ r.sensitivity.ranking.share_model_gt_rules | pct(1) }}
+  of {{ r.sensitivity.ranking.n_cells | int }} cost scenarios; profit cutoff beats Youden-J in {{ r.sensitivity.ranking.share_single_gt_youden | pct(1) }};
+  full pre-registered ordering in {{ r.sensitivity.ranking.share_all_orderings | pct(1) }} (H4 **{{ r.hypotheses.H4.pass | passfail }}**).
 - **Model:** test PR-AUC {{ r.evaluation.test.full.pr_auc | num(3) }}, ROC-AUC {{ r.evaluation.test.full.roc_auc | num(3) }},
   on a strictly later time period than training.
 - **Verified:** {{ r.verification.tests_passed | int }} automated tests passing
@@ -41,9 +44,17 @@ cutoff**. Every result is reported in money and customer impact, not only in AUC
   every number in this README is machine-checked against `outputs/results.json`.
 
 The dollar figures depend on cost parameters that are **assumptions**, not
-measurements. The claim the evidence supports is about the **ranking** of
-policies across a pre-registered range of those assumptions, not about any
-absolute dollar amount. See [Limitations](#limitations) directly below.
+measurements, so no absolute dollar amount here is a forecast of real savings.
+{% if r.hypotheses.H4.pass %}
+The claim the evidence supports is about the **ranking** of policies, which held
+across the pre-registered range of those assumptions.
+{% else %}
+Even the **ranking** of policies is only partly robust to those assumptions: the
+model-driven policy beats the rules baseline in {{ r.sensitivity.ranking.share_model_gt_rules | pct(1) }} of the
+pre-registered sensitivity grid, but the full pre-registered ordering holds in
+{{ r.sensitivity.ranking.share_all_orderings | pct(1) }} of it, short of the {{ r.hypotheses.H4.threshold_share | pct(0) }} target (H4 failed).
+{% endif %}
+See [Limitations](#limitations) directly below.
 
 ## Limitations
 
@@ -64,6 +75,13 @@ Read these before the results. Full list with severity ratings: [FINDINGS.md](FI
   between the training and test periods ({{ M.n_moderate | int }} more between
   {{ M.psi_warn | num(2) }} and {{ M.psi_alert | num(2) }}). Results are for one
   period of one merchant population.
+- **Review queue over capacity on test.** The three-way policy was sized to
+  {{ r.costs.max_reviews_per_day | num(1) }} reviews per day on validation; on test it averaged
+  {{ r.decision.policies_test.full.profit_three_way.reviews_per_day | num(1) }} and exceeded capacity on
+  {{ r.decision.test_days_over_capacity | int }} of {{ r.decision.test_n_days | int }} relative days. Overflow handling is not modelled.
+- **Data from a public mirror.** The official competition download was refused, so
+  the files came from a public Kaggle re-upload, verified against the official byte
+  sizes and row count (deviation logged in FINDINGS.md).
 - **One test period, one data source.** The test split covers
   {{ E.test_days | num(1) }} relative days and {{ E.test_rows | int }} transactions.
   Intervals below are bootstrap intervals over transactions within that period;
@@ -156,7 +174,9 @@ on validation did not transfer.
 Youden's J weights a
 missed fraud and a false decline equally in rate terms; the cost model does not,
 because a missed fraud costs the full amount and a false decline costs a margin
-plus a churn penalty. ![ROC with cutoffs](outputs/figures/roc_cutoffs.png)
+plus a churn penalty.
+
+![ROC with cutoffs](outputs/figures/roc_cutoffs.png)
 
 When both cutoffs threshold the same score, their decline sets are nested, so the
 swap set runs in one direction only. Its composition (amounts, card tenure,
@@ -191,7 +211,7 @@ transactions of the three-way policy ranges from
 {{ r.sensitivity.net_benefit_per_1000_range.nb1000_profit_three_way.min | usd }} to
 {{ r.sensitivity.net_benefit_per_1000_range.nb1000_profit_three_way.max | usd }} across
 the grid, so absolute dollar figures should not be quoted without their
-assumptions. The ordering of policies is more stable:
+assumptions. How often each ordering of policies survives:
 
 | Ordering on test | Share of grid cells where it holds |
 |---|---:|
